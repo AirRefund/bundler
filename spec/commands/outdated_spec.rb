@@ -68,7 +68,8 @@ describe "bundle outdated" do
       update_repo2 { build_gem "activesupport", "3.0" }
 
       bundle "outdated --verbose"
-      expect(out).to include("activesupport (newest 3.0, installed 2.3.5, requested = 2.3.5) in groups \"development, test\"")
+      expect(out).to include("===== Group development, test =====")
+      expect(out).to include("activesupport (newest 3.0, installed 2.3.5, requested = 2.3.5)")
     end
   end
 

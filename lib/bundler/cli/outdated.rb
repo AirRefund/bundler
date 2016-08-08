@@ -38,8 +38,8 @@ module Bundler
       end
 
       Bundler.ui.info ""
+      gems_by_groups = {}
 
-      out_count = 0
       # Loop through the current specs
       gemfile_specs, dependency_specs = current_specs.partition {|spec| current_dependencies.key? spec.name }
       [gemfile_specs.sort_by(&:name), dependency_specs.sort_by(&:name)].flatten.each do |current_spec|
@@ -67,46 +67,63 @@ module Bundler
         gem_outdated = Gem::Version.new(active_spec.version) > Gem::Version.new(current_spec.version)
         git_outdated = current_spec.git_version != active_spec.git_version
         if gem_outdated || git_outdated
-          unless options[:parseable]
-            if out_count == 0
-              if options["pre"]
-                Bundler.ui.info "Outdated gems included in the bundle (including pre-releases):"
-              else
-                Bundler.ui.info "Outdated gems included in the bundle:"
-              end
-            end
-          end
-
-          spec_version    = "#{active_spec.version}#{active_spec.git_version}"
-          current_version = "#{current_spec.version}#{current_spec.git_version}"
-          dependency_version = %(, requested #{dependency.requirement}) if dependency && dependency.specific?
-
+          groups = nil
           if dependency && !options[:parseable]
             groups = dependency.groups.join(", ")
-            pl = (dependency.groups.length > 1) ? "s" : ""
-            groups = " in group#{pl} \"#{groups}\""
           end
 
-          spec_outdated_info = "#{active_spec.name} (newest #{spec_version}, installed #{current_version}#{dependency_version})"
-          if options[:parseable]
-            Bundler.ui.info spec_outdated_info.to_s.rstrip
-          else
-            Bundler.ui.info "  * #{spec_outdated_info}#{groups}".rstrip
-          end
-
-          out_count += 1
+          gems_by_groups[groups] ||= []
+          gems_by_groups[groups] << { :active_spec => active_spec,
+                                      :current_spec => current_spec,
+                                      :dependency => dependency }
         end
+
         Bundler.ui.debug "from #{active_spec.loaded_from}"
       end
 
-      if out_count.zero?
+      if gems_by_groups.empty?
         Bundler.ui.info "Bundle up to date!\n" unless options[:parseable]
       else
+        unless options[:parseable]
+          if options["pre"]
+            Bundler.ui.info "Outdated gems included in the bundle (including pre-releases):"
+          else
+            Bundler.ui.info "Outdated gems included in the bundle:"
+          end
+        end
+
+        gems_by_groups.each do |groups, gems|
+          unless options[:parseable]
+            if groups
+              Bundler.ui.info "===== Group #{groups} ====="
+            else
+              Bundler.ui.info "===== Without group ====="
+            end
+          end
+
+          gems.each do |gem|
+            print_gem(gem[:current_spec], gem[:active_spec], gem[:dependency])
+          end
+        end
+
         exit 1
       end
     end
 
   private
+
+    def print_gem(current_spec, active_spec, dependency)
+      spec_version    = "#{active_spec.version}#{active_spec.git_version}"
+      current_version = "#{current_spec.version}#{current_spec.git_version}"
+      dependency_version = %(, requested #{dependency.requirement}) if dependency && dependency.specific?
+
+      spec_outdated_info = "#{active_spec.name} (newest #{spec_version}, installed #{current_version}#{dependency_version})"
+      if options[:parseable]
+        Bundler.ui.info spec_outdated_info.to_s.rstrip
+      else
+        Bundler.ui.info "  * #{spec_outdated_info}".rstrip
+      end
+    end
 
     def check_for_deployment_mode
       if Bundler.settings[:frozen]
