@@ -38,7 +38,8 @@ module Bundler
       end
 
       Bundler.ui.info ""
-      gems_by_groups = {}
+      outdated_gems_by_groups = {}
+      outdated_gems_list = []
 
       # Loop through the current specs
       gemfile_specs, dependency_specs = current_specs.partition {|spec| current_dependencies.key? spec.name }
@@ -72,16 +73,22 @@ module Bundler
             groups = dependency.groups.join(", ")
           end
 
-          gems_by_groups[groups] ||= []
-          gems_by_groups[groups] << { :active_spec => active_spec,
-                                      :current_spec => current_spec,
-                                      :dependency => dependency }
+          outdated_gems_list << { :active_spec => active_spec,
+                                  :current_spec => current_spec,
+                                  :dependency => dependency,
+                                  :groups => groups }
+
+          outdated_gems_by_groups[groups] ||= []
+          outdated_gems_by_groups[groups] << { :active_spec => active_spec,
+                                               :current_spec => current_spec,
+                                               :dependency => dependency,
+                                               :groups => groups }
         end
 
         Bundler.ui.debug "from #{active_spec.loaded_from}"
       end
 
-      if gems_by_groups.empty?
+      if outdated_gems_list.empty?
         Bundler.ui.info "Bundle up to date!\n" unless options[:parseable]
       else
         unless options[:parseable]
@@ -92,17 +99,23 @@ module Bundler
           end
         end
 
-        gems_by_groups.each do |groups, gems|
-          unless options[:parseable]
-            if groups
-              Bundler.ui.info "===== Group #{groups} ====="
-            else
-              Bundler.ui.info "===== Without group ====="
+        if options[:groups]
+          outdated_gems_by_groups.each do |groups, gems|
+            unless options[:parseable]
+              if groups
+                Bundler.ui.info "===== Group #{groups} ====="
+              else
+                Bundler.ui.info "===== Without group ====="
+              end
+            end
+
+            gems.each do |gem|
+              print_gem(gem[:current_spec], gem[:active_spec], gem[:dependency], groups)
             end
           end
-
-          gems.each do |gem|
-            print_gem(gem[:current_spec], gem[:active_spec], gem[:dependency])
+        else
+          outdated_gems_list.each do |gem|
+            print_gem(gem[:current_spec], gem[:active_spec], gem[:dependency], gem[:groups])
           end
         end
 
@@ -112,7 +125,7 @@ module Bundler
 
   private
 
-    def print_gem(current_spec, active_spec, dependency)
+    def print_gem(current_spec, active_spec, dependency, groups)
       spec_version    = "#{active_spec.version}#{active_spec.git_version}"
       current_version = "#{current_spec.version}#{current_spec.git_version}"
       dependency_version = %(, requested #{dependency.requirement}) if dependency && dependency.specific?
@@ -120,8 +133,10 @@ module Bundler
       spec_outdated_info = "#{active_spec.name} (newest #{spec_version}, installed #{current_version}#{dependency_version})"
       if options[:parseable]
         Bundler.ui.info spec_outdated_info.to_s.rstrip
-      else
+      elsif options[:groups] || !groups
         Bundler.ui.info "  * #{spec_outdated_info}".rstrip
+      else
+        Bundler.ui.info "  * #{spec_outdated_info} in groups \"#{groups}\"".rstrip
       end
     end
 

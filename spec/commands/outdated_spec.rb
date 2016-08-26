@@ -68,6 +68,21 @@ describe "bundle outdated" do
       update_repo2 { build_gem "activesupport", "3.0" }
 
       bundle "outdated --verbose"
+      expect(out).to include("activesupport (newest 3.0, installed 2.3.5, requested = 2.3.5) in groups \"development, test\"")
+    end
+
+    it "adds gem group to dependency output when repo is updated by groups" do
+      install_gemfile <<-G
+        source "file://#{gem_repo2}"
+
+        group :development, :test do
+          gem 'activesupport', '2.3.5'
+        end
+      G
+
+      update_repo2 { build_gem "activesupport", "3.0" }
+
+      bundle "outdated --groups --verbose"
       expect(out).to include("===== Group development, test =====")
       expect(out).to include("activesupport (newest 3.0, installed 2.3.5, requested = 2.3.5)")
     end
