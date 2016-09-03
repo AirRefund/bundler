@@ -99,8 +99,18 @@ module Bundler
           end
         end
 
-        if options[:groups]
-          outdated_gems_by_groups.each do |groups, gems|
+        if options[:groups] || options[:group]
+          ordered_groups = outdated_gems_by_groups.keys.compact.sort
+          [nil, ordered_groups].flatten.each do |groups|
+            gems = outdated_gems_by_groups[groups]
+            contains_group = if groups
+              groups.split(",").include?(options[:group])
+            else
+              options[:group] == "group"
+            end
+
+            next if (!options[:groups] && !contains_group) || gems.nil?
+
             unless options[:parseable]
               if groups
                 Bundler.ui.info "===== Group #{groups} ====="
