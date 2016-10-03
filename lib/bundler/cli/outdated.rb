@@ -30,6 +30,12 @@ module Bundler
         Bundler.definition(:gems => gems, :sources => sources)
       end
 
+      Bundler.definition.gem_version_promoter.tap do |gvp|
+        gvp.level = parse_options_level
+        gvp.strict = options[:strict]
+      end
+      Bundler.load
+
       definition_resolution = proc { options["local"] ? definition.resolve_with_cache! : definition.resolve_remotely! }
       if options[:parseable]
         Bundler.ui.silence(&definition_resolution)
@@ -47,26 +53,16 @@ module Bundler
         next if !gems.empty? && !gems.include?(current_spec.name)
 
         dependency = current_dependencies[current_spec.name]
+        next if dependency.nil?
 
-        if options["strict"]
-          active_spec = definition.specs.detect {|spec| spec.name == current_spec.name && spec.platform == current_spec.platform }
-        else
-          active_specs = definition.index[current_spec.name].select {|spec| spec.platform == current_spec.platform }.sort_by(&:version)
-          if !current_spec.version.prerelease? && !options[:pre] && active_specs.size > 1
-            active_spec = active_specs.delete_if {|b| b.respond_to?(:version) && b.version.prerelease? }
-          end
-          active_spec = active_specs.last
+        active_spec = Bundler.definition.gem_version_promoter.sort_versions(dependency, definition.index[current_spec.name]).last
+        gem_outdated = Gem::Version.new(active_spec.version) > Gem::Version.new(current_spec.version)
 
-          if options[:major] || options[:minor] || options[:patch]
-            update_present = update_present_via_semver_portions(current_spec, active_spec, options)
-            active_spec = nil unless update_present
-          end
+        git_outdated = false
+        if active_spec.respond_to?(:git_version)
+          git_outdated = current_spec.git_version != active_spec.git_version
         end
 
-        next if active_spec.nil?
-
-        gem_outdated = Gem::Version.new(active_spec.version) > Gem::Version.new(current_spec.version)
-        git_outdated = current_spec.git_version != active_spec.git_version
         if gem_outdated || git_outdated
           groups = nil
           if dependency && !options[:parseable]
@@ -85,7 +81,7 @@ module Bundler
                                                :groups => groups }
         end
 
-        Bundler.ui.debug "from #{active_spec.loaded_from}"
+        Bundler.ui.debug "from #{current_spec.loaded_from}"
       end
 
       if outdated_gems_list.empty?
@@ -135,8 +131,20 @@ module Bundler
 
   private
 
+    def parse_options_level
+      return :minor if options[:minor]
+      return :patch if options[:patch]
+
+      :major
+    end
+
     def print_gem(current_spec, active_spec, dependency, groups)
-      spec_version    = "#{active_spec.version}#{active_spec.git_version}"
+      spec_version = if active_spec.respond_to?(:git_version)
+        "#{active_spec.version}#{active_spec.git_version}"
+      else
+        active_spec.version.to_s
+      end
+
       current_version = "#{current_spec.version}#{current_spec.git_version}"
       dependency_version = %(, requested #{dependency.requirement}) if dependency && dependency.specific?
 
@@ -158,36 +166,6 @@ module Bundler
               "\nby running `bundle install --no-deployment`."
         raise ProductionError, error_message
       end
-    end
-
-    def update_present_via_semver_portions(current_spec, active_spec, options)
-      current_major = current_spec.version.segments.first
-      active_major = active_spec.version.segments.first
-
-      update_present = false
-
-      update_present = active_major > current_major if options[:major]
-
-      if !update_present && (options[:minor] || options[:patch]) && current_major == active_major
-        current_minor = get_version_semver_portion_value(current_spec, 1)
-        active_minor = get_version_semver_portion_value(active_spec, 1)
-
-        update_present = active_minor > current_minor if options[:minor]
-
-        if !update_present && options[:patch] && current_minor == active_minor
-          current_patch = get_version_semver_portion_value(current_spec, 2)
-          active_patch = get_version_semver_portion_value(active_spec, 2)
-
-          update_present = active_patch > current_patch
-        end
-      end
-
-      update_present
-    end
-
-    def get_version_semver_portion_value(spec, version_portion_index)
-      version_section = spec.version.segments[version_portion_index, 1]
-      version_section.nil? ? 0 : (version_section.first || 0)
     end
   end
 end
