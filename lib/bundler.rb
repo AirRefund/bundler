@@ -3,6 +3,8 @@ require "fileutils"
 require "pathname"
 require "rbconfig"
 require "thread"
+require "tmpdir"
+
 require "bundler/errors"
 require "bundler/environment_preserver"
 require "bundler/gem_remote_fetcher"
@@ -27,6 +29,7 @@ module Bundler
   autoload :EndpointSpecification,  "bundler/endpoint_specification"
   autoload :Env,                    "bundler/env"
   autoload :Fetcher,                "bundler/fetcher"
+  autoload :FeatureFlag,            "bundler/feature_flag"
   autoload :GemHelper,              "bundler/gem_helper"
   autoload :GemHelpers,             "bundler/gem_helpers"
   autoload :GemVersionPromoter,     "bundler/gem_version_promoter"
@@ -90,7 +93,7 @@ module Bundler
       # Return if all groups are already loaded
       return @setup if defined?(@setup) && @setup
 
-      definition.validate_ruby!
+      definition.validate_runtime!
 
       SharedHelpers.print_major_deprecations!
 
@@ -142,8 +145,41 @@ module Bundler
       "#{Bundler.rubygems.ruby_engine}/#{Bundler.rubygems.config_map[:ruby_version]}"
     end
 
+    def user_home
+      @user_home ||= begin
+        home = Bundler.rubygems.user_home
+        warning = "Your home directory is not set properly:"
+        if home.nil?
+          warning += "\n * It is not set at all"
+        elsif !File.directory?(home)
+          warning += "\n * `#{home}` is not a directory"
+        elsif !File.writable?(home)
+          warning += "\n * `#{home}` is not writable"
+        else
+          return @user_home = Pathname.new(home)
+        end
+
+        login = Etc.getlogin || "unknown"
+
+        tmp_home = Pathname.new(Dir.tmpdir).join("bundler", "home", login)
+        begin
+          SharedHelpers.filesystem_access(tmp_home, :write) do |p|
+            FileUtils.mkdir_p(p)
+          end
+        rescue => e
+          warning += "\n\nBundler also failed to create a temporary home directory at `#{tmp_home}`:\n#{e}"
+          raise warning
+        end
+
+        warning += "\n\nBundler will use `#{tmp_home}` as your home directory temporarily"
+
+        Bundler.ui.warn(warning)
+        tmp_home
+      end
+    end
+
     def user_bundle_path
-      Pathname.new(Bundler.rubygems.user_home).join(".bundle")
+      Pathname.new(user_home).join(".bundle")
     end
 
     def home
@@ -257,6 +293,11 @@ EOF
       with_clean_env { Kernel.exec(*args) }
     end
 
+    def local_platform
+      return Gem::Platform::RUBY if settings[:force_ruby_platform]
+      Gem::Platform.local
+    end
+
     def default_gemfile
       SharedHelpers.default_gemfile
     end
@@ -328,16 +369,22 @@ EOF
     def sudo(str)
       SUDO_MUTEX.synchronize do
         prompt = "\n\n" + <<-PROMPT.gsub(/^ {6}/, "").strip + " "
-        Your user account isn't allowed to install to the system Rubygems.
+        Your user account isn't allowed to install to the system RubyGems.
         You can cancel this installation and run:
 
             bundle install --path vendor/bundle
 
         to install the gems into ./vendor/bundle/, or you can enter your password
-        and install the bundled gems to Rubygems using sudo.
+        and install the bundled gems to RubyGems using sudo.
 
         Password:
         PROMPT
+
+        unless @prompted_for_sudo ||= system(%(sudo -k -p "#{prompt}" true))
+          raise SudoNotPermittedError,
+            "Bundler requires sudo access to install at the moment. " \
+            "Try installing again, granting Bundler sudo access when prompted, or installing into a different path."
+        end
 
         `sudo -p "#{prompt}" #{str}`
       end
@@ -389,6 +436,10 @@ EOF
       @git_present = Bundler.which("git") || Bundler.which("git.exe")
     end
 
+    def feature_flag
+      @feature_flag ||= FeatureFlag.new(VERSION)
+    end
+
     def reset!
       @root = nil
       @settings = nil
@@ -398,6 +449,7 @@ EOF
       @locked_gems = nil
       @bundle_path = nil
       @bin_path = nil
+      @user_home = nil
 
       Plugin.reset!
 
@@ -438,7 +490,10 @@ EOF
     def configure_gem_path(env = ENV, settings = self.settings)
       blank_home = env["GEM_HOME"].nil? || env["GEM_HOME"].empty?
       if settings[:disable_shared_gems]
-        env["GEM_PATH"] = nil
+        # this needs to be empty string to cause
+        # PathSupport.split_gem_path to only load up the
+        # Bundler --path setting as the GEM_PATH.
+        env["GEM_PATH"] = ""
       elsif blank_home || Bundler.rubygems.gem_dir != bundle_path.to_s
         possibles = [Bundler.rubygems.gem_dir, Bundler.rubygems.gem_path]
         paths = possibles.flatten.compact.uniq.reject(&:empty?)

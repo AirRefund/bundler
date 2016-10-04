@@ -39,10 +39,12 @@ module Bundler
       bundle_dir = find_directory(".bundle")
       return nil unless bundle_dir
 
-      global_bundle_dir = File.join(Bundler.rubygems.user_home, ".bundle")
+      bundle_dir = Pathname.new(bundle_dir)
+
+      global_bundle_dir = Bundler.user_home.join(".bundle")
       return nil if bundle_dir == global_bundle_dir
 
-      Pathname.new(bundle_dir)
+      bundle_dir
     end
 
     def in_bundle?
@@ -202,9 +204,14 @@ module Bundler
 
     def set_rubylib
       rubylib = (ENV["RUBYLIB"] || "").split(File::PATH_SEPARATOR)
-      rubylib.unshift File.expand_path("../..", __FILE__)
+      rubylib.unshift bundler_ruby_lib
       ENV["RUBYLIB"] = rubylib.uniq.join(File::PATH_SEPARATOR)
     end
+
+    def bundler_ruby_lib
+      File.expand_path("../..", __FILE__)
+    end
+    private :bundler_ruby_lib
 
     def clean_load_path
       # handle 1.9 where system gems are always on the load path
@@ -224,7 +231,8 @@ module Bundler
 
     def prints_major_deprecations?
       require "bundler"
-      return false unless Bundler.settings[:major_deprecations]
+      deprecation_release = Bundler::VERSION.split(".").drop(1).include?("99")
+      return false if !deprecation_release && !Bundler.settings[:major_deprecations]
       require "bundler/deprecate"
       return false if Bundler::Deprecate.skip
       true

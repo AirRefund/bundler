@@ -5,7 +5,7 @@ require "bundler/worker"
 module Bundler
   class Fetcher
     class CompactIndex < Base
-      require "bundler/vendor/compact_index_client/lib/compact_index_client"
+      require "bundler/compact_index_client"
 
       def self.compact_index_request(method_name)
         method = instance_method(method_name)
@@ -61,7 +61,7 @@ module Bundler
       compact_index_request :fetch_spec
 
       def available?
-        user_home = Pathname.new(Bundler.rubygems.user_home)
+        user_home = Bundler.user_home
         return nil unless user_home.directory? && user_home.writable?
         # Read info file checksums out of /versions, so we can know if gems are up to date
         fetch_uri.scheme != "file" && compact_index_client.update_and_parse_checksums!
@@ -110,7 +110,7 @@ module Bundler
           begin
             downloader.fetch(fetch_uri + path, headers)
           rescue NetworkDownError => e
-            raise unless Bundler.settings[:allow_offline_install] && headers["If-None-Match"]
+            raise unless Bundler.feature_flag.allow_offline_install? && headers["If-None-Match"]
             Bundler.ui.warn "Using the cached data for the new index because of a network error: #{e}"
             Net::HTTPNotModified.new(nil, nil, nil)
           end

@@ -79,8 +79,8 @@ module Spec
         end
 
         build_gem "platform_specific" do |s|
-          s.platform = Gem::Platform.local
-          s.write "lib/platform_specific.rb", "PLATFORM_SPECIFIC = '1.0.0 #{Gem::Platform.local}'"
+          s.platform = Bundler.local_platform
+          s.write "lib/platform_specific.rb", "PLATFORM_SPECIFIC = '1.0.0 #{Bundler.local_platform}'"
         end
 
         build_gem "platform_specific" do |s|
@@ -610,7 +610,10 @@ module Spec
       end
 
       def _default_files
-        @_default_files ||= { "lib/#{name}.rb" => "#{Builders.constantize(name)} = '#{version}'" }
+        @_default_files ||= begin
+          platform_string = " #{@spec.platform}" unless @spec.platform == Gem::Platform::RUBY
+          { "lib/#{name}.rb" => "#{Builders.constantize(name)} = '#{version}#{platform_string}'" }
+        end
       end
 
       def _default_path

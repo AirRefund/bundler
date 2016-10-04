@@ -159,6 +159,7 @@ module Bundler
     # that said, it's a rare situation (other than rake), and parallel
     # installation is SO MUCH FASTER. so we let people opt in.
     def install(options)
+      Bundler.rubygems.load_plugins
       force = options["force"]
       jobs = 1
       jobs = [Bundler.settings[:jobs].to_i - 1, 1].max if can_install_in_parallel?
@@ -207,7 +208,7 @@ module Bundler
       end unless Bundler.bundle_path.exist?
     rescue Errno::EEXIST
       raise PathError, "Could not install to path `#{Bundler.settings[:path]}` " \
-        "because of an invalid symlink. Remove the symlink so the directory can be created."
+        "because a file already exists at that path. Either remove or rename the file so the directory can be created."
     end
 
     def resolve_if_need(options)

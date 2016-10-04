@@ -2,8 +2,9 @@
 require "spec_helper"
 
 describe "bundle exec" do
+  let(:system_gems_to_install) { %w(rack-1.0.0 rack-0.9.1) }
   before :each do
-    system_gems "rack-1.0.0", "rack-0.9.1"
+    system_gems(system_gems_to_install)
   end
 
   it "activates the correct gem" do
@@ -564,6 +565,42 @@ describe "bundle exec" do
       it_behaves_like "it runs"
     end
 
+    context "regarding $0 and __FILE__" do
+      let(:executable) { super() + <<-'RUBY' }
+
+        puts "$0: #{$0.inspect}"
+        puts "__FILE__: #{__FILE__.inspect}"
+      RUBY
+
+      let(:expected) { super() + <<-EOS.chomp }
+
+$0: #{path.to_s.inspect}
+__FILE__: #{path.to_s.inspect}
+      EOS
+
+      it_behaves_like "it runs"
+
+      context "when the path is relative" do
+        let(:path) { super().relative_path_from(bundled_app) }
+
+        if LessThanProc.with(RUBY_VERSION).call("1.9")
+          pending "relative paths have ./ __FILE__"
+        else
+          it_behaves_like "it runs"
+        end
+      end
+
+      context "when the path is relative with a leading ./" do
+        let(:path) { Pathname.new("./#{super().relative_path_from(Pathname.pwd)}") }
+
+        if LessThanProc.with(RUBY_VERSION).call("< 1.9")
+          pending "relative paths with ./ have absolute __FILE__"
+        else
+          it_behaves_like "it runs"
+        end
+      end
+    end
+
     context "signals being trapped by bundler" do
       let(:executable) { strip_whitespace <<-RUBY }
         #{shebang}
@@ -589,6 +626,28 @@ describe "bundle exec" do
 
         expect(out).to eq("foo")
       end
+    end
+  end
+
+  context "nested bundle exec" do
+    let(:system_gems_to_install) { super() << :bundler }
+    before do
+      gemfile <<-G
+        source "file://#{gem_repo1}"
+        gem "rack"
+      G
+      bundle :install, :system_bundler => true, :path => "vendor/bundler"
+    end
+
+    it "overrides disable_shared_gems so bundler can be found" do
+      file = bundled_app("file_that_bundle_execs.rb")
+      create_file(file, <<-RB)
+        #!#{Gem.ruby}
+        puts `bundle exec echo foo`
+      RB
+      file.chmod(0o777)
+      bundle! "exec #{file}", :system_bundler => true
+      expect(out).to eq("foo")
     end
   end
 end

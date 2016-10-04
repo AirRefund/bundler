@@ -12,7 +12,7 @@ If you have any questions after reading this page, please feel free to contact e
 
 ## How you can help
 
-We track [small bugs and features](https://github.com/bundler/bundler/issues?labels=small) so that anyone who wants to help can start with something that's not too overwhelming. We also keep a [list of things anyone can help with, any time](https://github.com/bundler/bundler/blob/master/CONTRIBUTING.md#contributing). If nothing on those lists looks good, talk to us, and we'll figure out what you can help with. We can absolutely use your help, no matter what level of programming skill you have at the moment.
+We track [small bugs and features](https://github.com/bundler/bundler/labels/contribution%3A%20small) so that anyone who wants to help can start with something that's not too overwhelming. We also keep a [list of things anyone can help with, any time](https://github.com/bundler/bundler/blob/master/CONTRIBUTING.md#contributing). If nothing on those lists looks good, talk to us, and we'll figure out what you can help with. We can absolutely use your help, no matter what level of programming skill you have at the moment.
 
 # Development setup
 
@@ -39,6 +39,8 @@ Bundler doesn't use a Gemfile to list development dependencies, because when we 
         $ alias dbundle='BUNDLE_DISABLE_POSTIT=1 ruby -I /path/to/bundler/lib /path/to/bundler/exe/bundle'
 
      The `BUNDLE_DISABLE_POSTIT` environment variable ensures that the version of Bundler in `/path/to/bundler/lib` will be used. Without that environment setting, Bundler will automatically download, install, and run the version of Bundler listed in `Gemfile.lock`. With that set up, you can test changes you've made to Bundler by running `dbundle`, without interfering with the regular `bundle` command.
+
+To dive into the code with Pry: `RUBYOPT=-rpry dbundle` to require pry and then run commands.
 
 # Submitting Pull Requests
 

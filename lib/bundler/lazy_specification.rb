@@ -6,6 +6,20 @@ require "bundler/match_platform"
 module Bundler
   class LazySpecification
     Identifier = Struct.new(:name, :version, :source, :platform, :dependencies)
+    class Identifier
+      include Comparable
+      def <=>(other)
+        return unless other.is_a?(Identifier)
+        [name, version, platform_string] <=> [other.name, other.version, other.platform_string]
+      end
+
+    protected
+
+      def platform_string
+        platform_string = platform.to_s
+        platform_string == Index::RUBY ? Index::NULL : platform_string
+      end
+    end
 
     include MatchPlatform
 
@@ -55,7 +69,12 @@ module Bundler
     end
 
     def __materialize__
-      @specification = source.specs.search(Gem::Dependency.new(name, version)).last
+      search_object = Bundler.settings[:specific_platform] || Bundler.settings[:force_ruby_platform] ? self : Dependency.new(name, version)
+      @specification = if source.is_a?(Source::Gemspec) && source.gemspec.name == name
+        source.gemspec.tap {|s| s.source = source }
+      else
+        source.specs.search(search_object).last
+      end
     end
 
     def respond_to?(*args)
