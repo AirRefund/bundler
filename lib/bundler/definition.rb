@@ -134,7 +134,7 @@ module Bundler
       end
     end
 
-    def create_gem_version_promoter
+    def create_gem_version_promoter(unlock_gems = nil)
       locked_specs =
         if @unlocking && @locked_specs.empty? && !@lockfile_contents.empty?
           # Definition uses an empty set of locked_specs to indicate all gems
@@ -144,7 +144,7 @@ module Bundler
         else
           @locked_specs
         end
-      GemVersionPromoter.new(locked_specs, @unlock[:gems])
+      GemVersionPromoter.new(locked_specs, unlock_gems || @unlock[:gems])
     end
 
     def resolve_with_cache!
